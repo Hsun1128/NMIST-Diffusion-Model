@@ -1,10 +1,4 @@
-"""
-資料相關的協助函式與資料集實作。
-
-這個模組提供：
-    - `MNISTImageFolder`：讀取 `mnist` 目錄下的 PNG 檔案並轉為張量。
-    - `build_dataloader`：依指定批次大小與資料載入參數建立 `DataLoader`。
-"""
+"""讀取硬碟上 MNIST PNG 並建立 DataLoader 的工具函式。"""
 
 from __future__ import annotations
 
@@ -18,12 +12,7 @@ from torchvision import transforms
 
 
 class MNISTImageFolder(Dataset):
-    """
-    以硬碟上的 PNG 檔案作為影像來源的簡易資料集。
-
-    由於題目禁止直接下載外部資料集，我們改從使用者提供的 `mnist`
-    目錄中讀取資料，每張圖都會被正規化到 [-1, 1]。
-    """
+    """從指定資料夾載入 PNG，轉成 RGB 張量並正規化到 [-1, 1]。"""
 
     def __init__(self, root: str, image_size: int = 32, transform: transforms.Compose | None = None) -> None:
         self.root = Path(root).expanduser().resolve()

@@ -1,14 +1,4 @@
-"""
-可視化 DDPM 反向擴散過程，可單獨執行或在訓練後自動呼叫。
-
-功能：
-    - 從純噪聲出發，同時生成 8 條獨立軌跡（預設）。
-    - 將整體 timestep 分成 7 等份（預設），於每個分段末端紀錄影像。
-    - 若提供 `--run-name`，會自動：
-        * 以 `--output-root/run-name/checkpoints/best.pt` 作為 checkpoint。
-        * 將輸出圖存放於 `--output-root/run-name/diffusion_progress.png`。
-    - `visualize_from_checkpoint` 函式可供其他模組（如訓練腳本）直接呼叫，以利在訓練結束後自動生成結果。
-"""
+"""產生多條反向擴散軌跡並輸出網格圖，可獨立執行或由訓練腳本呼叫。"""
 
 from __future__ import annotations
 

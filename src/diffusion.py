@@ -1,6 +1,4 @@
-"""
-定義前向 (q) 與反向 (p) 擴散過程，並提供取樣與噪聲注入的 API。
-"""
+"""前向/反向擴散流程與取樣 API。"""
 
 from __future__ import annotations
 

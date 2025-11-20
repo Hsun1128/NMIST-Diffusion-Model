@@ -1,9 +1,4 @@
-"""
-簡化版 U-Net 架構，參考 DDPM 在 MNIST 上的常見實作：
-    - 僅保留必要的殘差區塊與時間調變
-    - 去除多餘的注意力層與複雜控制
-    - 採用最小化的 Encoder-Decoder 結構以降低參數量
-"""
+"""針對 28x28 MNIST 影像重新實作的精簡 U-Net。"""
 
 from __future__ import annotations
 
