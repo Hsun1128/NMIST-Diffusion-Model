@@ -1,0 +1,15 @@
+# cache
+.cache/
+.config/
+.nv/
+
+# python
+*.pyc
+__pycache__/
+
+# data
+mnist/
+generated/
+
+# model
+trained_model/
