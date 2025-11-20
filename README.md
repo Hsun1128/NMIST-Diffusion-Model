@@ -119,6 +119,8 @@ pip install -r requirements.txt
 資料集準備：
 
 ```bash
+# MNIST data 由 NTU TAICA CVPDL 課程提供，僅使用 MNIST Training set: 60,000 handwritten digits
+wget -O mnist.zip "https://drive.usercontent.google.com/download?id=1xVCJD6M6sE-tZJYxenLzvuEkSiYXig_F&export=download&authuser=0&confirm=t"
 unzip mnist.zip -d mnist
 ls mnist | head
 ```
