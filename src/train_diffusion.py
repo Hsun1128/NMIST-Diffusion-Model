@@ -31,11 +31,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--base-channels", type=int, default=64)
-    parser.add_argument("--image-size", type=int, default=32, help="輸入影像邊長，預設將 MNIST resize 到 32。")
+    parser.add_argument("--image-size", type=int, default=28, help="輸入影像邊長，預設為 28 以符合 MNIST 原始尺寸。")
     parser.add_argument("--timesteps", type=int, default=1000)
     parser.add_argument("--beta-start", type=float, default=1e-4)
     parser.add_argument("--beta-end", type=float, default=0.02)
-    parser.add_argument("--attention-heads", type=int, default=4, help="多頭注意力的 head 數。")
     parser.add_argument("--residual-dropout", type=float, default=0.0, help="殘差區塊內的 dropout 機率。")
     parser.add_argument("--sample-every", type=int, default=500)
     parser.add_argument("--sample-batch-size", type=int, default=64)
@@ -47,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="trained_model", help="所有權重/樣本/紀錄的根目錄。")
     parser.add_argument("--run-name", type=str, default=None, help="子資料夾名稱，預設會以時間戳命名。")
     parser.add_argument("--seed", type=int, default=3407)
+    parser.add_argument("--train-split", type=float, default=0.9, help="訓練集比例（例如 0.9 表示 90%% 訓練，10%% 驗證）。")
     return parser.parse_args()
 
 
@@ -65,15 +65,36 @@ def main() -> None:
     sample_dir.mkdir(parents=True, exist_ok=True)
 
     train_loader = build_dataloader(
-        args.data_dir, args.batch_size, args.num_workers, args.image_size, shuffle=True, drop_last=True
+        args.data_dir,
+        args.batch_size,
+        args.num_workers,
+        args.image_size,
+        shuffle=True,
+        drop_last=True,
+        train_split=args.train_split,
+        is_train=True,
+        seed=args.seed,
     )
     eval_loader = build_dataloader(
-        args.data_dir, args.batch_size, args.num_workers, args.image_size, shuffle=False, drop_last=False
+        args.data_dir,
+        args.batch_size,
+        args.num_workers,
+        args.image_size,
+        shuffle=False,
+        drop_last=False,
+        train_split=args.train_split,
+        is_train=False,
+        seed=args.seed,
     )
+    
+    # 輸出數據劃分資訊
+    train_size = len(train_loader.dataset)
+    val_size = len(eval_loader.dataset)
+    print(f"數據劃分：訓練集 {train_size} 筆 ({train_size/(train_size+val_size)*100:.1f}%)，驗證集 {val_size} 筆 ({val_size/(train_size+val_size)*100:.1f}%)")
     model = UNet(
         in_channels=3,
         base_channels=args.base_channels,
-        attention_heads=args.attention_heads,
+        time_dim=args.base_channels * 4,
         residual_dropout=args.residual_dropout,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
@@ -130,12 +151,11 @@ def main() -> None:
                 batch_size=8,
                 segments=7,
                 model_image_size=args.image_size,
-                output_size=28,
+                output_size=args.image_size,
                 timesteps=args.timesteps,
                 beta_start=args.beta_start,
                 beta_end=args.beta_end,
                 base_channels=args.base_channels,
-                attention_heads=args.attention_heads,
                 residual_dropout=args.residual_dropout,
                 device=device,
                 seed=args.seed,

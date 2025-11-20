@@ -53,13 +53,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--batch-size", type=int, default=8, help="同時追蹤的生成樣本數。")
     parser.add_argument("--segments", type=int, default=7, help="將 timestep 切成幾等份（結果圖會有 segments+1 欄）。")
-    parser.add_argument("--model-image-size", type=int, default=32, help="模型訓練時的輸入尺寸。")
-    parser.add_argument("--output-size", type=int, default=28, help="可選的輸出尺寸（例如題目要求的 28x28）。")
+    parser.add_argument("--model-image-size", type=int, default=28, help="模型訓練時的輸入尺寸。")
+    parser.add_argument("--output-size", type=int, default=28, help="輸出尺寸（預設與訓練尺寸相同）。")
     parser.add_argument("--timesteps", type=int, default=1000)
     parser.add_argument("--beta-start", type=float, default=1e-4)
     parser.add_argument("--beta-end", type=float, default=0.02)
     parser.add_argument("--base-channels", type=int, default=64)
-    parser.add_argument("--attention-heads", type=int, default=4)
     parser.add_argument("--residual-dropout", type=float, default=0.0)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=3407)
@@ -70,13 +69,12 @@ def load_model(
     checkpoint_path: Path,
     device: torch.device,
     base_channels: int,
-    attention_heads: int,
     residual_dropout: float,
 ) -> UNet:
     model = UNet(
         in_channels=3,
         base_channels=base_channels,
-        attention_heads=attention_heads,
+        time_dim=base_channels * 4,
         residual_dropout=residual_dropout,
     ).to(device)
     checkpoint = torch.load(checkpoint_path.as_posix(), map_location=device)
@@ -139,7 +137,6 @@ def visualize_from_checkpoint(
     beta_start: float = 1e-4,
     beta_end: float = 0.02,
     base_channels: int = 64,
-    attention_heads: int = 4,
     residual_dropout: float = 0.0,
     device: Optional[torch.device | str] = None,
     seed: Optional[int] = 3407,
@@ -162,7 +159,6 @@ def visualize_from_checkpoint(
         checkpoint_path=checkpoint_path,
         device=device,
         base_channels=base_channels,
-        attention_heads=attention_heads,
         residual_dropout=residual_dropout,
     )
     diffusion = DiffusionProcess(
@@ -237,7 +233,6 @@ def main() -> None:
         beta_start=args.beta_start,
         beta_end=args.beta_end,
         base_channels=args.base_channels,
-        attention_heads=args.attention_heads,
         residual_dropout=args.residual_dropout,
         device=args.device,
         seed=args.seed,

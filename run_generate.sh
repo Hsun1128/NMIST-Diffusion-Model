@@ -25,14 +25,13 @@ echo "輸出資料夾：$OUTPUT_DIR"
 python "${PROJECT_ROOT}/src/generate_images.py" \
   --checkpoint "$CHECKPOINT_PATH" \
   --output-dir "$OUTPUT_DIR" \
-  --num-images 10 \
-  --batch-size 128 \
-  --model-image-size 32 \
+  --num-images 10000 \
+  --batch-size 4080 \
+  --model-image-size 28 \
   --output-size 28 \
   --timesteps 1000 \
   --beta-start 1e-4 \
   --beta-end 0.02 \
-  --base-channels 64 \
-  --attention-heads 4 \
+  --base-channels 128 \
   --residual-dropout 0.0
 

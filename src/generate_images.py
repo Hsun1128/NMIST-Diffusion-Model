@@ -34,13 +34,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=str, default="generated", help="輸出影像資料夾。")
     parser.add_argument("--num-images", type=int, default=10000, help="生成的影像數量。")
     parser.add_argument("--batch-size", type=int, default=64, help="每次採樣的批次大小。")
-    parser.add_argument("--model-image-size", type=int, default=32, help="模型訓練時使用的影像邊長，需符合 UNet 的多次下採樣需求。")
-    parser.add_argument("--output-size", type=int, default=28, help="最終輸出影像邊長，預設符合題目要求的 28x28。")
+    parser.add_argument("--model-image-size", type=int, default=28, help="模型訓練時使用的影像邊長，需符合 UNet 的多次下採樣需求。")
+    parser.add_argument("--output-size", type=int, default=28, help="最終輸出影像邊長，預設為 28x28（與訓練尺寸相同，無需 resize）。")
     parser.add_argument("--timesteps", type=int, default=1000)
     parser.add_argument("--beta-start", type=float, default=1e-4)
     parser.add_argument("--beta-end", type=float, default=0.02)
     parser.add_argument("--base-channels", type=int, default=64)
-    parser.add_argument("--attention-heads", type=int, default=4)
     parser.add_argument("--residual-dropout", type=float, default=0.0)
     parser.add_argument("--device", type=str, default=None, help="指定運算裝置（cuda/cpu）。預設自動偵測，有 GPU 時會使用 cuda。")
     parser.add_argument("--seed", type=int, default=3407, help="隨機種子以利重現。")
@@ -51,13 +50,12 @@ def load_model(
     checkpoint_path: Path,
     device: torch.device,
     base_channels: int,
-    attention_heads: int,
     residual_dropout: float,
 ) -> UNet:
     model = UNet(
         in_channels=3,
         base_channels=base_channels,
-        attention_heads=attention_heads,
+        time_dim=base_channels * 4,
         residual_dropout=residual_dropout,
     ).to(device)
     checkpoint = torch.load(checkpoint_path.as_posix(), map_location=device)
@@ -94,7 +92,6 @@ def main() -> None:
         checkpoint_path=checkpoint_path,
         device=device,
         base_channels=args.base_channels,
-        attention_heads=args.attention_heads,
         residual_dropout=args.residual_dropout,
     )
     diffusion = DiffusionProcess(

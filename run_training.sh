@@ -6,7 +6,7 @@ python src/train_diffusion.py \
   --epochs 50 \
   --lr 2e-4 \
   --base-channels 128 \
-  --image-size 32 \
+  --image-size 28 \
   --timesteps 1000 \
   --beta-start 1e-4 \
   --beta-end 0.02 \

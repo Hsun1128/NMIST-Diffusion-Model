@@ -13,7 +13,7 @@ from typing import List, Tuple
 
 import torch
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import transforms
 
 
@@ -65,12 +65,38 @@ def build_dataloader(
     image_size: int,
     shuffle: bool = True,
     drop_last: bool = True,
+    train_split: float | None = None,
+    is_train: bool = True,
+    seed: int = 3407,
 ) -> DataLoader:
     """
-    建立訓練用的 `DataLoader`，並啟用 shuffle、pinned memory 等常見設定。
+    建立 `DataLoader`，支援 train/val 劃分。
+    
+    Args:
+        root: 數據目錄
+        batch_size: 批次大小
+        num_workers: 數據載入工作線程數
+        image_size: 圖像尺寸
+        shuffle: 是否打亂順序
+        drop_last: 是否丟棄最後一個不完整的批次
+        train_split: 訓練集比例（例如 0.8 表示 80% 訓練，20% 驗證）。若為 None 則不劃分。
+        is_train: 是否為訓練集（True 為訓練集，False 為驗證集）
+        seed: 隨機種子，確保劃分可重現
     """
-
-    dataset = MNISTImageFolder(root, image_size=image_size)
+    full_dataset = MNISTImageFolder(root, image_size=image_size)
+    
+    if train_split is not None:
+        # 使用固定種子確保劃分可重現
+        generator = torch.Generator().manual_seed(seed)
+        train_size = int(len(full_dataset) * train_split)
+        val_size = len(full_dataset) - train_size
+        train_dataset, val_dataset = random_split(
+            full_dataset, [train_size, val_size], generator=generator
+        )
+        dataset = train_dataset if is_train else val_dataset
+    else:
+        dataset = full_dataset
+    
     return DataLoader(
         dataset,
         batch_size=batch_size,

@@ -1,11 +1,8 @@
 """
-U-Net 架構與其組成模組。
-
-為了讓整個 diffusion model 易於理解與維護，本檔案整理了：
-    - 時間步嵌入 `SinusoidalPosEmb`
-    - 殘差區塊 `ResidualBlock`
-    - 自注意力區塊 `AttentionBlock`
-    - 主體模型 `UNet`
+簡化版 U-Net 架構，參考 DDPM 在 MNIST 上的常見實作：
+    - 僅保留必要的殘差區塊與時間調變
+    - 去除多餘的注意力層與複雜控制
+    - 採用最小化的 Encoder-Decoder 結構以降低參數量
 """
 
 from __future__ import annotations
@@ -18,7 +15,7 @@ import torch.nn.functional as F
 
 
 class SinusoidalPosEmb(nn.Module):
-    """將離散 timestep 轉換為連續 embedding 的模組。"""
+    """標準的 sinusoidal timestep embedding。"""
 
     def __init__(self, dim: int) -> None:
         super().__init__()
@@ -35,152 +32,112 @@ class SinusoidalPosEmb(nn.Module):
         return emb
 
 
-def get_group_norm(channels: int, num_groups: int = 32) -> nn.GroupNorm:
-    """根據通道數動態選擇 GroupNorm 的 group 數，確保能被整除。"""
-    num_groups = min(num_groups, channels)
-    while channels % num_groups != 0:
-        num_groups -= 1
-    return nn.GroupNorm(num_groups, channels)
+def get_group_norm(channels: int, max_groups: int = 16) -> nn.GroupNorm:
+    """動態選擇 GroupNorm 的 groups，避免無法整除的情況。"""
+    groups = min(max_groups, channels)
+    while channels % groups != 0 and groups > 1:
+        groups -= 1
+    return nn.GroupNorm(groups, channels)
 
 
 class ResidualBlock(nn.Module):
-    """
-    Diffusion 模型常用的殘差區塊，透過 FiLM 式時間調整與 dropout 改善表現。
-    """
+    """簡化版殘差區塊，使用 FiLM 式時間調整。"""
 
     def __init__(self, in_channels: int, out_channels: int, time_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
-        self.time_mlp = nn.Sequential(nn.SiLU(), nn.Linear(time_dim, out_channels * 2))
-        self.block1 = nn.Sequential(
-            get_group_norm(in_channels),
-            nn.SiLU(),
-            nn.Conv2d(in_channels, out_channels, 3, padding=1),
-        )
-        self.block2 = nn.Sequential(
-            get_group_norm(out_channels),
-            nn.SiLU(),
-            nn.Conv2d(out_channels, out_channels, 3, padding=1),
-        )
+        self.norm1 = get_group_norm(in_channels)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, padding=1)
+        self.time_emb = nn.Sequential(nn.SiLU(), nn.Linear(time_dim, out_channels))
+        self.norm2 = get_group_norm(out_channels)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
-        self.residual = (
-            nn.Conv2d(in_channels, out_channels, 1) if in_channels != out_channels else nn.Identity()
-        )
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1)
+        self.residual = nn.Conv2d(in_channels, out_channels, 1) if in_channels != out_channels else nn.Identity()
 
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        h = self.block1(x)
-        time_emb = self.time_mlp(t)
-        scale, shift = time_emb.chunk(2, dim=1)
-        h = h * (1 + scale[:, :, None, None]) + shift[:, :, None, None]
-        h = self.block2(h)
-        h = self.dropout(h)
+        h = self.conv1(F.silu(self.norm1(x)))
+        time_emb = self.time_emb(t)[:, :, None, None]
+        h = h + time_emb
+        h = self.conv2(self.dropout(F.silu(self.norm2(h))))
         return h + self.residual(x)
 
 
-class AttentionBlock(nn.Module):
-    """在空間維度套用多頭自注意力，協助模型捕捉長距依賴。"""
+class DownBlock(nn.Module):
+    """兩個殘差區塊 + 可選下採樣。"""
 
-    def __init__(self, channels: int, num_heads: int = 4) -> None:
+    def __init__(self, in_channels: int, out_channels: int, time_dim: int, downsample: bool) -> None:
         super().__init__()
-        if channels % num_heads != 0:
-            raise ValueError(f"channels ({channels}) 必須能被 num_heads ({num_heads}) 整除。")
-        self.num_heads = num_heads
-        self.head_dim = channels // num_heads
-        self.scale = self.head_dim**-0.5
-        self.group_norm = get_group_norm(channels)
-        self.qkv = nn.Conv2d(channels, channels * 3, 1, bias=False)
-        self.proj = nn.Conv2d(channels, channels, 1)
+        self.res1 = ResidualBlock(in_channels, out_channels, time_dim)
+        self.res2 = ResidualBlock(out_channels, out_channels, time_dim)
+        self.downsample = nn.Conv2d(out_channels, out_channels, 3, stride=2, padding=1) if downsample else None
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, c, h, w = x.shape
-        h_ = self.group_norm(x)
-        q, k, v = self.qkv(h_).chunk(3, dim=1)
-        q = q.reshape(b, self.num_heads, self.head_dim, h * w).permute(0, 1, 3, 2)
-        k = k.reshape(b, self.num_heads, self.head_dim, h * w)
-        attn = torch.softmax(torch.matmul(q, k) * self.scale, dim=-1)
-        v = v.reshape(b, self.num_heads, self.head_dim, h * w).permute(0, 1, 3, 2)
-        out = torch.matmul(attn, v)
-        out = out.permute(0, 1, 3, 2).reshape(b, c, h, w)
-        return self.proj(out) + x
+    def forward(self, x: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        x = self.res1(x, t)
+        x = self.res2(x, t)
+        skip = x
+        if self.downsample is not None:
+            x = self.downsample(x)
+        return x, skip
+
+
+class UpBlock(nn.Module):
+    """與 DownBlock 對稱的上採樣模組。"""
+
+    def __init__(self, in_channels: int, skip_channels: int, out_channels: int, time_dim: int, upsample: bool) -> None:
+        super().__init__()
+        self.res1 = ResidualBlock(in_channels + skip_channels, out_channels, time_dim)
+        self.res2 = ResidualBlock(out_channels, out_channels, time_dim)
+        self.upsample = nn.ConvTranspose2d(out_channels, out_channels, 2, stride=2) if upsample else None
+
+    def forward(self, x: torch.Tensor, skip: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        if x.shape[-2:] != skip.shape[-2:]:
+            x = F.interpolate(x, size=skip.shape[-2:], mode="bilinear", align_corners=False)
+        x = torch.cat([x, skip], dim=1)
+        x = self.res1(x, t)
+        x = self.res2(x, t)
+        if self.upsample is not None:
+            x = self.upsample(x)
+        return x
 
 
 class UNet(nn.Module):
-    """
-    U-Net 主體：採用 Encoder-Decoder + Skip Connection 架構，
-    並在多個尺度插入 Attention 以提升生成品質。
-    """
+    """精簡版 U-Net，專為 28x28 MNIST 影像設計。"""
 
     def __init__(
         self,
-        in_channels: int = 1,
+        in_channels: int = 3,
         base_channels: int = 64,
         time_dim: int = 256,
-        attention_heads: int = 4,
         residual_dropout: float = 0.0,
-    ):
+    ) -> None:
         super().__init__()
-        # 改進的時間嵌入，使用更深的網路
+        if time_dim < base_channels * 2:
+            time_dim = base_channels * 2
+
         self.time_embed = nn.Sequential(
             SinusoidalPosEmb(time_dim),
             nn.Linear(time_dim, time_dim * 4),
             nn.SiLU(),
-            nn.Linear(time_dim * 4, time_dim * 4),
-            nn.SiLU(),
             nn.Linear(time_dim * 4, time_dim),
         )
-        
+
         self.initial = nn.Conv2d(in_channels, base_channels, 3, padding=1)
-        # 下採樣路徑
-        self.down1 = nn.ModuleList(
+
+        self.down_blocks = nn.ModuleList(
             [
-                ResidualBlock(base_channels, base_channels, time_dim, residual_dropout),
-                ResidualBlock(base_channels, base_channels, time_dim, residual_dropout),
-                AttentionBlock(base_channels, attention_heads),
-            ]
-        )
-        self.down2 = nn.ModuleList(
-            [
-                ResidualBlock(base_channels, base_channels * 2, time_dim, residual_dropout),
-                ResidualBlock(base_channels * 2, base_channels * 2, time_dim, residual_dropout),
-                AttentionBlock(base_channels * 2, attention_heads),
-            ]
-        )
-        self.down3 = nn.ModuleList(
-            [
-                ResidualBlock(base_channels * 2, base_channels * 4, time_dim, residual_dropout),
-                ResidualBlock(base_channels * 4, base_channels * 4, time_dim, residual_dropout),
-                AttentionBlock(base_channels * 4, attention_heads),
+                DownBlock(base_channels, base_channels, time_dim, downsample=True),
+                DownBlock(base_channels, base_channels * 2, time_dim, downsample=True),
+                DownBlock(base_channels * 2, base_channels * 4, time_dim, downsample=False),
             ]
         )
 
-        # Bottleneck
-        self.mid = nn.ModuleList(
-            [
-                ResidualBlock(base_channels * 4, base_channels * 4, time_dim, residual_dropout),
-                AttentionBlock(base_channels * 4, attention_heads),
-                ResidualBlock(base_channels * 4, base_channels * 4, time_dim, residual_dropout),
-            ]
-        )
+        self.mid_block1 = ResidualBlock(base_channels * 4, base_channels * 4, time_dim, residual_dropout)
+        self.mid_block2 = ResidualBlock(base_channels * 4, base_channels * 4, time_dim, residual_dropout)
 
-        # 上採樣路徑
-        self.up3 = nn.ModuleList(
+        self.up_blocks = nn.ModuleList(
             [
-                ResidualBlock(base_channels * 8, base_channels * 2, time_dim, residual_dropout),
-                ResidualBlock(base_channels * 2, base_channels * 2, time_dim, residual_dropout),
-                AttentionBlock(base_channels * 2, attention_heads),
-            ]
-        )
-        self.up2 = nn.ModuleList(
-            [
-                ResidualBlock(base_channels * 4, base_channels, time_dim, residual_dropout),
-                ResidualBlock(base_channels, base_channels, time_dim, residual_dropout),
-                AttentionBlock(base_channels, attention_heads),
-            ]
-        )
-        self.up1 = nn.ModuleList(
-            [
-                ResidualBlock(base_channels * 2, base_channels, time_dim, residual_dropout),
-                ResidualBlock(base_channels, base_channels, time_dim, residual_dropout),
-                AttentionBlock(base_channels, attention_heads),
+                UpBlock(base_channels * 4, base_channels * 4, base_channels * 2, time_dim, upsample=True),
+                UpBlock(base_channels * 2, base_channels * 2, base_channels, time_dim, upsample=True),
+                UpBlock(base_channels, base_channels, base_channels, time_dim, upsample=False),
             ]
         )
 
@@ -189,17 +146,10 @@ class UNet(nn.Module):
             nn.SiLU(),
             nn.Conv2d(base_channels, in_channels, 3, padding=1),
         )
-        
-        # 使用 stride=2 的 Conv2d 進行下採樣，替代 AvgPool2d
-        self.downsample1 = nn.Conv2d(base_channels, base_channels, 3, stride=2, padding=1)
-        self.downsample2 = nn.Conv2d(base_channels * 2, base_channels * 2, 3, stride=2, padding=1)
-        self.downsample3 = nn.Conv2d(base_channels * 4, base_channels * 4, 3, stride=2, padding=1)
-        
-        # 初始化權重
+
         self._initialize_weights()
 
     def _initialize_weights(self) -> None:
-        """使用 Xavier 初始化改善訓練穩定性。"""
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.Linear)):
                 nn.init.xavier_uniform_(m.weight)
@@ -210,47 +160,17 @@ class UNet(nn.Module):
         t = self.time_embed(timestep)
         x = self.initial(x)
 
-        # 下採樣路徑
-        d1 = []
-        for layer in self.down1:
-            x = layer(x, t) if isinstance(layer, ResidualBlock) else layer(x)
-            d1.append(x)
-        x = self.downsample1(x)
+        skips = []
+        for block in self.down_blocks:
+            x, skip = block(x, t)
+            skips.append(skip)
 
-        d2 = []
-        for layer in self.down2:
-            x = layer(x, t) if isinstance(layer, ResidualBlock) else layer(x)
-            d2.append(x)
-        x = self.downsample2(x)
+        x = self.mid_block1(x, t)
+        x = self.mid_block2(x, t)
 
-        d3 = []
-        for layer in self.down3:
-            x = layer(x, t) if isinstance(layer, ResidualBlock) else layer(x)
-            d3.append(x)
-        x = self.downsample3(x)
-
-        # Bottleneck
-        for layer in self.mid:
-            x = layer(x, t) if isinstance(layer, ResidualBlock) else layer(x)
-
-        # 上採樣路徑，使用 bilinear 插值替代 nearest
-        for idx, layer in enumerate(self.up3):
-            if idx == 0:
-                x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
-                x = torch.cat([x, d3[-1]], dim=1)
-            x = layer(x, t) if isinstance(layer, ResidualBlock) else layer(x)
-
-        for idx, layer in enumerate(self.up2):
-            if idx == 0:
-                x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
-                x = torch.cat([x, d2[-1]], dim=1)
-            x = layer(x, t) if isinstance(layer, ResidualBlock) else layer(x)
-
-        for idx, layer in enumerate(self.up1):
-            if idx == 0:
-                x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
-                x = torch.cat([x, d1[-1]], dim=1)
-            x = layer(x, t) if isinstance(layer, ResidualBlock) else layer(x)
+        for block in self.up_blocks:
+            skip = skips.pop()
+            x = block(x, skip, t)
 
         return self.final(x)
 
