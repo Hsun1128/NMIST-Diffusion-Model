@@ -13,7 +13,13 @@
   <a href="https://github.com/Hsun1128/NMIST-Diffusion-Model"><img src="https://img.shields.io/badge/GitHub-Source-blue?logo=github" alt="GitHub"></a>
 </p>
 
-本專案從頭訓練 Denoising Diffusion Probabilistic Model (DDPM) 於 MNIST PNG 影像，涵蓋資料管線、精簡版 U-Net、擴散過程實作、訓練/生成腳本與視覺化工具，協助快速重現並延伸 TAICA CVPDL 2025 HW3 所需成果。
+本專案從頭訓練 Denoising Diffusion Probabilistic Model (DDPM) 於 MNIST PNG 影像，涵蓋資料管線、精簡版 U-Net、擴散過程實作、訓練/生成腳本與視覺化工具，快速重現與延伸相關應用。
+
+## 📈 成果摘要
+
+- FID ≈ **7.85**（`trained_model/mnist-ddpm-baseline/checkpoints/best.pt`，生成 10,000 張影像與 `mnist/` 參考集比較）
+- 範例生成樣本：`trained_model/mnist-ddpm-baseline/sample_step_*.png`
+- 擴散過程視覺化：`trained_model/mnist-ddpm-baseline/diffusion_progress.png`
 
 <p align="center">
   <a href="docs/images/diffusion_progress.png">
@@ -21,7 +27,7 @@
   </a>
 </p>
 
-> 圖示展示 7 個採樣階段的還原過程：自純噪聲逐步生成清晰的手寫數字。
+> 圖示展示 8 個採樣階段的還原過程：自純噪聲逐步生成清晰的手寫數字。
 
 > [!TIP]
 > 想快速驗證訓練效果？直接執行 `bash run_training.sh` 後檢視 `trained_model/<run>/diffusion_progress.png` 與 `train_log.csv`，即可確認收斂與生成品質。
@@ -64,13 +70,13 @@
 
 ## 模型與方法概述
 
-1. **Forward Diffusion**：依線性 β 排程注入噪聲，形成 `x_t = √ᾱ_t x_0 + √(1-ᾱ_t)ϵ`。
-2. **精簡 U-Net**：
+1. **Forward Diffusion**[（Ho et al., 2020）](https://arxiv.org/abs/2006.11239)：依線性 β 排程注入噪聲，形成 `x_t = √ᾱ_t x_0 + √(1-ᾱ_t)ϵ`。
+2. **精簡 U-Net**（參考 DDPM 原論文與社群常用 U-Net 實作）：
    - Sinusoidal timestep embedding → MLP → FiLM 式調整。
    - DownBlock ×3 擷取多尺度特徵，保留 skip connections。
    - Bottleneck 雙殘差強化表徵能力。
    - UpBlock ×3 重建影像並輸出噪聲估計。
-3. **Reverse Sampling**：`DiffusionProcess` 以 DDPM 公式逐步去噪，提供 `sample()`/`p_sample()` 與 snapshot 工具。
+3. **Reverse Sampling**[（Ho et al., 2020](https://arxiv.org/abs/2006.11239)；[Nichol & Dhariwal, 2021）](https://arxiv.org/abs/2102.09672)：`DiffusionProcess` 以 DDPM 公式逐步去噪，提供 `sample()`/`p_sample()` 與 snapshot 工具。
 
 此架構保留 DDPM 核心流程，並針對 28×28 MNIST 調整通道與採樣策略以降低資源需求。
 
@@ -258,7 +264,7 @@ python -m pytorch_fid \
 python -m pytorch_fid generated mnist
 ```
 
-請確保兩資料夾皆含相同解析度（28×28）與通道（RGB）的大量 PNG。
+請確保兩資料夾皆含相同解析度（28×28）與通道（RGB）的大量 PNG。若使用 `trained_model/mnist-ddpm-baseline/checkpoints/best.pt` 生成 10,000 張影像與 `mnist/` 參考資料比較，可得到 **FID ≈ 7.85**。
 
 ## 進階設定與建議
 
