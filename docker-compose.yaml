@@ -1,0 +1,24 @@
+services:
+  mnist:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: MNIST
+    network_mode: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all  # 使用所有GPU
+    volumes:
+      # 將本地目錄直接掛載到容器內的/app目錄
+      - .:/app
+      # 添加共享記憶體卷以解決之前的shm問題
+      - /dev/shm:/dev/shm
+    working_dir: /app  # 設置工作目錄為/app
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all  # 使用所有可用的GPU
+      - HOME=/app  # 確保HOME環境變數正確設置
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True

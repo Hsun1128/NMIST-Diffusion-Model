@@ -2,6 +2,10 @@
 .cache/
 .config/
 .nv/
+._*
+.DS_Store
+.bash_history
+
 
 # python
 *.pyc
@@ -10,6 +14,7 @@ __pycache__/
 # data
 mnist/
 generated/
+mnist.zip
 
 # model
 trained_model/
