@@ -1,7 +1,7 @@
 #!/bin/bash
 
 python src/train_diffusion.py \
-  --data-dir @mnist \
+  --data-dir mnist \
   --batch-size 64 \
   --epochs 50 \
   --lr 2e-4 \

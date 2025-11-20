@@ -25,7 +25,7 @@ from visualize_diffusion import visualize_from_checkpoint
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a DDPM on MNIST from scratch.")
-    parser.add_argument("--data-dir", type=str, default="@mnist", help="指向題目提供的本地 MNIST 影像資料夾。")
+    parser.add_argument("--data-dir", type=str, default="mnist", help="指向題目提供的本地 MNIST 影像資料夾。")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=5)

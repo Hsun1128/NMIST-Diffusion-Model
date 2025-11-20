@@ -1,0 +1,16 @@
+torch
+torchvision
+torchaudio
+imutils
+pytorch-fid
+scikit-learn
+xgboost
+pandas
+tqdm
+tensorboardX
+tensorboard
+opencv-python
+pillow
+scipy
+numpy
+matplotlib
